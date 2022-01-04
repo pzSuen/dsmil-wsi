@@ -59,9 +59,9 @@ def compute_feats(args, bags_list, i_classifier, save_path=None, magnification='
     i_classifier.eval()
     num_bags = len(bags_list)
     Tensor = torch.FloatTensor
-    for i in range(0, num_bags):
+    for i in range(num_bags):
         feats_list = []
-        if magnification=='single' or magnification=='low':
+        if magnification in ['single', 'low']:
             csv_file_path = glob.glob(os.path.join(bags_list[i], '*.jpg')) + glob.glob(os.path.join(bags_list[i], '*.jpeg'))
         elif magnification=='high':
             csv_file_path = glob.glob(os.path.join(bags_list[i], '*'+os.sep+'*.jpg')) + glob.glob(os.path.join(bags_list[i], '*'+os.sep+'*.jpeg'))
@@ -74,7 +74,7 @@ def compute_feats(args, bags_list, i_classifier, save_path=None, magnification='
                 feats = feats.cpu().numpy()
                 feats_list.extend(feats)
                 sys.stdout.write('\r Computed: {}/{} -- {}/{}'.format(i+1, num_bags, iteration+1, len(dataloader)))
-        if len(feats_list) == 0:
+        if not feats_list:
             print('No valid patch extracted from: ' + bags_list[i])
         else:
             df = pd.DataFrame(feats_list)
@@ -87,12 +87,12 @@ def compute_tree_feats(args, bags_list, embedder_low, embedder_high, save_path=N
     num_bags = len(bags_list)
     Tensor = torch.FloatTensor
     with torch.no_grad():
-        for i in range(0, num_bags): 
+        for i in range(num_bags): 
             low_patches = glob.glob(os.path.join(bags_list[i], '*.jpg')) + glob.glob(os.path.join(bags_list[i], '*.jpeg'))
             feats_list = []
             feats_tree_list = []
             dataloader, bag_size = bag_dataset(args, low_patches)
-            for iteration, batch in enumerate(dataloader):
+            for batch in dataloader:
                 patches = batch['input'].float().cuda()
                 feats, classes = embedder_low(patches)
                 feats = feats.cpu().numpy()
@@ -100,9 +100,7 @@ def compute_tree_feats(args, bags_list, embedder_low, embedder_high, save_path=N
             for idx, low_patch in enumerate(low_patches):
                 high_patches = glob.glob(low_patch.replace('.jpeg', os.sep+'*.jpg')) + glob.glob(low_patch.replace('.jpeg', os.sep+'*.jpeg'))
                 high_patches = high_patches + glob.glob(low_patch.replace('.jpg', os.sep+'*.jpg')) + glob.glob(low_patch.replace('.jpg', os.sep+'*.jpeg'))
-                if len(high_patches) == 0:
-                    pass
-                else:
+                if len(high_patches) != 0:
                     for high_patch in high_patches:
                         img = Image.open(high_patch)
                         img = VF.to_tensor(img).float().cuda()
@@ -113,7 +111,7 @@ def compute_tree_feats(args, bags_list, embedder_low, embedder_high, save_path=N
                             feats = np.concatenate((feats.cpu().numpy(), 0.25*feats_list[idx]), axis=-1)
                         feats_tree_list.extend(feats)
                 sys.stdout.write('\r Computed: {}/{} -- {}/{}'.format(i+1, num_bags, idx+1, len(low_patches)))
-            if len(feats_tree_list) == 0:
+            if not feats_tree_list:
                 print('No valid patch extracted from: ' + bags_list[i])
             else:
                 df = pd.DataFrame(feats_tree_list)
@@ -138,16 +136,12 @@ def main():
     gpu_ids = tuple(args.gpu_index)
     os.environ['CUDA_VISIBLE_DEVICES']=','.join(str(x) for x in gpu_ids)
 
-    if args.norm_layer == 'instance':
+    if args.norm_layer == 'batch':
+        norm=nn.BatchNorm2d
+        pretrain = args.weights == 'ImageNet'
+    elif args.norm_layer == 'instance':
         norm=nn.InstanceNorm2d
         pretrain = False
-    elif args.norm_layer == 'batch':  
-        norm=nn.BatchNorm2d
-        if args.weights == 'ImageNet':
-            pretrain = True
-        else:
-            pretrain = False
-
     if args.backbone == 'resnet18':
         resnet = models.resnet18(pretrained=pretrain, norm_layer=norm)
         num_feats = 512
@@ -163,11 +157,11 @@ def main():
     for param in resnet.parameters():
         param.requires_grad = False
     resnet.fc = nn.Identity()
-    
+
     if args.magnification == 'tree' and args.weights_high != None and args.weights_low != None:
         i_classifier_h = mil.IClassifier(resnet, num_feats, output_class=args.num_classes).cuda()
         i_classifier_l = mil.IClassifier(copy.deepcopy(resnet), num_feats, output_class=args.num_classes).cuda()
-        
+
         if args.weights_high == 'ImageNet' or args.weights_low == 'ImageNet' or args.weights== 'ImageNet':
             if args.norm_layer == 'batch':
                 print('Use ImageNet features.')
@@ -176,7 +170,7 @@ def main():
         else:
             weight_path = os.path.join('simclr', 'runs', args.weights_high, 'checkpoints', 'model.pth')
             state_dict_weights = torch.load(weight_path)
-            for i in range(4):
+            for _ in range(4):
                 state_dict_weights.popitem()
             state_dict_init = i_classifier_h.state_dict()
             new_state_dict = OrderedDict()
@@ -189,7 +183,7 @@ def main():
 
             weight_path = os.path.join('simclr', 'runs', args.weights_low, 'checkpoints', 'model.pth')
             state_dict_weights = torch.load(weight_path)
-            for i in range(4):
+            for _ in range(4):
                 state_dict_weights.popitem()
             state_dict_init = i_classifier_l.state_dict()
             new_state_dict = OrderedDict()
@@ -202,7 +196,7 @@ def main():
             print('Use pretrained features.')
 
 
-    elif args.magnification == 'single' or args.magnification == 'high' or args.magnification == 'low':  
+    elif args.magnification in ['single', 'high', 'low']:  
         i_classifier = mil.IClassifier(resnet, num_feats, output_class=args.num_classes).cuda()
 
         if args.weights == 'ImageNet':
@@ -216,7 +210,7 @@ def main():
             else:
                 weight_path = glob.glob('simclr/runs/*/checkpoints/*.pth')[-1]
             state_dict_weights = torch.load(weight_path)
-            for i in range(4):
+            for _ in range(4):
                 state_dict_weights.popitem()
             state_dict_init = i_classifier.state_dict()
             new_state_dict = OrderedDict()
@@ -227,16 +221,16 @@ def main():
             os.makedirs(os.path.join('embedder', args.dataset), exist_ok=True)
             torch.save(new_state_dict, os.path.join('embedder', args.dataset, 'embedder.pth'))
             print('Use pretrained features.')
-    
-    if args.magnification == 'tree' or args.magnification == 'low' or args.magnification == 'high' :
+
+    if args.magnification in ['tree', 'low', 'high']:
         bags_path = os.path.join('WSI', args.dataset, 'pyramid', '*', '*')
     else:
         bags_path = os.path.join('WSI', args.dataset, 'single', '*', '*')
     feats_path = os.path.join('datasets', args.dataset)
-        
+
     os.makedirs(feats_path, exist_ok=True)
     bags_list = glob.glob(bags_path)
-    
+
     if args.magnification == 'tree':
         compute_tree_feats(args, bags_list, i_classifier_l, i_classifier_h, feats_path, 'fusion')
     else:

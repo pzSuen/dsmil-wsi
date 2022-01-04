@@ -59,14 +59,14 @@ def bag_dataset(args, csv_file_path):
 def test(args, bags_list, milnet):
     num_bags = len(bags_list)
     Tensor = torch.FloatTensor
-    for i in range(0, num_bags):
+    for i in range(num_bags):
         feats_list = []
         pos_list = []
         classes_list = []
         csv_file_path = glob.glob(os.path.join(bags_list[i], '*.jpg'))
         dataloader, bag_size = bag_dataset(args, csv_file_path)
         with torch.no_grad():
-            for iteration, batch in enumerate(dataloader):
+            for batch in dataloader:
                 patches = batch['input'].float().cuda()
                 patch_pos = batch['position']
                 feats, classes = milnet.i_classifier(patches)
@@ -91,7 +91,7 @@ def test(args, bags_list, milnet):
                 print(bags_list[i] + ' is detected as: LUSC')
                 color = [0, 0, 1]
                 attentions = A[:, 1]
-            elif bag_prediction[0] < args.thres_luad and bag_prediction[1] < args.thres_lusc:
+            elif bag_prediction[0] < args.thres_luad:
                 print(bags_list[i] + ' is detected as: benign')
             else:
                 print(bags_list[i] + ' is detected as: both LUAD and LUSC')
@@ -115,7 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('--thres_luad', type=float, default=0.7371)
     parser.add_argument('--thres_lusc', type=float, default=0.2752)
     args = parser.parse_args()
-    
+
     resnet = models.resnet18(pretrained=False, norm_layer=nn.InstanceNorm2d)
     for param in resnet.parameters():
         param.requires_grad = False
@@ -123,10 +123,10 @@ if __name__ == '__main__':
     i_classifier = mil.IClassifier(resnet, args.feats_size, output_class=args.num_classes).cuda()
     b_classifier = mil.BClassifier(input_size=args.feats_size, output_class=args.num_classes).cuda()
     milnet = mil.MILNet(i_classifier, b_classifier).cuda()
-    
+
     state_dict_weights = torch.load(os.path.join('test', 'weights', 'embedder.pth'))
     new_state_dict = OrderedDict()
-    for i in range(4):
+    for _ in range(4):
         state_dict_weights.popitem()
     state_dict_init = i_classifier.state_dict()
     for (k, v), (k_0, v_0) in zip(state_dict_weights.items(), state_dict_init.items()):
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     state_dict_weights["i_classifier.fc.weight"] = state_dict_weights["i_classifier.fc.0.weight"]
     state_dict_weights["i_classifier.fc.bias"] = state_dict_weights["i_classifier.fc.0.bias"]
     milnet.load_state_dict(state_dict_weights, strict=False)
-    
+
     bags_list = glob.glob(os.path.join('test', 'patches', '*'))
     os.makedirs(os.path.join('test', 'output'), exist_ok=True)
     test(args, bags_list, milnet)

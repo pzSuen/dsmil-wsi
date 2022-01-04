@@ -60,14 +60,14 @@ def test(args, bags_list, milnet):
     milnet.eval()
     num_bags = len(bags_list)
     Tensor = torch.FloatTensor
-    for i in range(0, num_bags):
+    for i in range(num_bags):
         feats_list = []
         pos_list = []
         classes_list = []
         csv_file_path = glob.glob(os.path.join(bags_list[i], '*.jpg'))
         dataloader, bag_size = bag_dataset(args, csv_file_path)
         with torch.no_grad():
-            for iteration, batch in enumerate(dataloader):
+            for batch in dataloader:
                 patches = batch['input'].float().cuda()
                 patch_pos = batch['position']
                 feats, classes = milnet.i_classifier(patches)
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     parser.add_argument('--feats_size', type=int, default=512)
     parser.add_argument('--thres_tumor', type=float, default=0.1964)
     args = parser.parse_args()
-    
+
     resnet = models.resnet18(pretrained=False, norm_layer=nn.InstanceNorm2d)
     for param in resnet.parameters():
         param.requires_grad = False
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     milnet = mil.MILNet(i_classifier, b_classifier).cuda()
     state_dict_weights = torch.load(os.path.join('test-c16', 'weights', 'embedder.pth'))
     new_state_dict = OrderedDict()
-    for i in range(4):
+    for _ in range(4):
         state_dict_weights.popitem()
     state_dict_init = i_classifier.state_dict()
     for (k, v), (k_0, v_0) in zip(state_dict_weights.items(), state_dict_init.items()):
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     state_dict_weights["i_classifier.fc.weight"] = state_dict_weights["i_classifier.fc.0.weight"]
     state_dict_weights["i_classifier.fc.bias"] = state_dict_weights["i_classifier.fc.0.bias"]
     milnet.load_state_dict(state_dict_weights, strict=False)
-    
+
     bags_list = glob.glob(os.path.join('test-c16', 'patches', '*'))
     os.makedirs(os.path.join('test-c16', 'output'), exist_ok=True)
     test(args, bags_list, milnet)

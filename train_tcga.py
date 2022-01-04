@@ -24,10 +24,9 @@ def get_bag_feats(csv_file_df, args):
     label = np.zeros(args.num_classes)
     if args.num_classes==1:
         label[0] = csv_file_df.iloc[1]
-    else:
-        if int(csv_file_df.iloc[1])<=(len(label)-1):
-            label[int(csv_file_df.iloc[1])] = 1
-        
+    elif int(csv_file_df.iloc[1])<=(len(label)-1):
+        label[int(csv_file_df.iloc[1])] = 1
+
     return label, feats
 
 def train(train_df, milnet, criterion, optimizer, args):
@@ -44,13 +43,13 @@ def train(train_df, milnet, criterion, optimizer, args):
         bag_feats = Variable(Tensor([feats]))
         bag_feats = bag_feats.view(-1, args.feats_size)
         ins_prediction, bag_prediction, _, _ = milnet(bag_feats)
-        max_prediction, _ = torch.max(ins_prediction, 0)        
+        max_prediction, _ = torch.max(ins_prediction, 0)
         bag_loss = criterion(bag_prediction.view(1, -1), bag_label.view(1, -1))
         max_loss = criterion(max_prediction.view(1, -1), bag_label.view(1, -1))
         loss = 0.5*bag_loss + 0.5*max_loss
         loss.backward()
         optimizer.step()
-        total_loss = total_loss + loss.item()
+        total_loss += loss.item()
         sys.stdout.write('\r Training bag [%d/%d] bag loss: %.4f' % (i, len(train_df), loss.item()))
     return total_loss / len(train_df)
 
@@ -76,11 +75,11 @@ def test(test_df, milnet, criterion, optimizer, args):
             bag_feats = Variable(Tensor([feats]))
             bag_feats = bag_feats.view(-1, args.feats_size)
             ins_prediction, bag_prediction, _, _ = milnet(bag_feats)
-            max_prediction, _ = torch.max(ins_prediction, 0)  
+            max_prediction, _ = torch.max(ins_prediction, 0)
             bag_loss = criterion(bag_prediction.view(1, -1), bag_label.view(1, -1))
             max_loss = criterion(max_prediction.view(1, -1), bag_label.view(1, -1))
             loss = 0.5*bag_loss + 0.5*max_loss
-            total_loss = total_loss + loss.item()
+            total_loss += loss.item()
             sys.stdout.write('\r Testing bag [%d/%d] bag loss: %.4f' % (i, len(test_df), loss.item()))
             test_labels.extend([label])
             test_predictions.extend([(0.0*torch.sigmoid(max_prediction)+1.0*torch.sigmoid(bag_prediction)).squeeze().cpu().numpy()])
@@ -100,10 +99,10 @@ def test(test_df, milnet, criterion, optimizer, args):
             class_prediction_bag[test_predictions[:, i]<thresholds_optimal[i]] = 0
             test_predictions[:, i] = class_prediction_bag
     bag_score = 0
-    for i in range(0, len(test_df)):
-        bag_score = np.array_equal(test_labels[i], test_predictions[i]) + bag_score         
+    for i in range(len(test_df)):
+        bag_score = np.array_equal(test_labels[i], test_predictions[i]) + bag_score
     avg_score = bag_score / len(test_df)
-    
+
     return total_loss / len(test_df), avg_score, auc_value, thresholds_optimal
 
 def multi_label_roc(labels, predictions, num_classes, pos_label=1):
@@ -114,7 +113,7 @@ def multi_label_roc(labels, predictions, num_classes, pos_label=1):
     aucs = []
     if len(predictions.shape)==1:
         predictions = predictions[:, None]
-    for c in range(0, num_classes):
+    for c in range(num_classes):
         label = labels[:, c]
         prediction = predictions[:, c]
         fpr, tpr, threshold = roc_curve(label, prediction, pos_label=1)

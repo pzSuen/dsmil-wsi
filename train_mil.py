@@ -18,8 +18,8 @@ def get_data(file_path):
     df = pd.read_csv(file_path)
     df = pd.DataFrame(df)
     df = df[df.columns[0]]
-    data_list = []    
-    for i in range(0, df.shape[0]):  
+    data_list = []
+    for i in range(df.shape[0]):  
         data = str(df.iloc[i]).split(' ')
         ids = data[0].split(':')
         idi = int(ids[0])
@@ -41,7 +41,7 @@ def get_bag(data, idb):
 
 def epoch_train(bag_ins_list, optimizer, criterion, milnet, args):
     epoch_loss = 0
-    for i, data in enumerate(bag_ins_list):
+    for data in bag_ins_list:
         optimizer.zero_grad()
         data_bag_list = shuffle(data[1])
         data_tensor = torch.from_numpy(np.stack(data_bag_list)).float().cuda()
@@ -54,8 +54,8 @@ def epoch_train(bag_ins_list, optimizer, criterion, milnet, args):
         loss_total = 0.5*loss_bag + 0.5*loss_max
         loss_total = loss_total.mean()
         loss_total.backward()
-        optimizer.step()  
-        epoch_loss = epoch_loss + loss_total.item()
+        optimizer.step()
+        epoch_loss += loss_total.item()
     return epoch_loss / len(bag_ins_list)
 
 def epoch_test(bag_ins_list, criterion, milnet, args):
@@ -63,7 +63,7 @@ def epoch_test(bag_ins_list, criterion, milnet, args):
     bag_predictions = []
     epoch_loss = 0
     with torch.no_grad():
-        for i, data in enumerate(bag_ins_list):
+        for data in bag_ins_list:
             bag_labels.append(np.clip(data[0], 0, 1))
             data_tensor = torch.from_numpy(np.stack(data[1])).float().cuda()
             data_tensor = data_tensor[:, 0:args.num_feats]
@@ -75,8 +75,8 @@ def epoch_test(bag_ins_list, criterion, milnet, args):
             loss_total = 0.5*loss_bag + 0.5*loss_max
             loss_total = loss_total.mean()
             bag_predictions.append(torch.sigmoid(bag_prediction).cpu().squeeze().numpy())
-            epoch_loss = epoch_loss + loss_total.item()
-    epoch_loss = epoch_loss / len(bag_ins_list)
+            epoch_loss += loss_total.item()
+    epoch_loss /= len(bag_ins_list)
     return epoch_loss, bag_labels, bag_predictions
 
 def optimal_thresh(fpr, tpr, thresholds, p=0):
@@ -104,9 +104,7 @@ def cross_validation_set(in_list, fold, index):
     return list(itertools.chain.from_iterable(chunked)), test_list
 
 def compute_pos_weight(bags_list):
-    pos_count = 0
-    for item in bags_list:
-        pos_count = pos_count + np.clip(item[0], 0, 1)
+    pos_count = sum(np.clip(item[0], 0, 1) for item in bags_list)
     return (len(bags_list)-pos_count)/pos_count
 
 def main():
@@ -118,12 +116,12 @@ def main():
     parser.add_argument('--weight_decay', default=5e-3, type=float, help='Weight decay [5e-3]')
     parser.add_argument('--model', default='dsmil', type=str, help='MIL model [dsmil]')
     args = parser.parse_args()
-    
-    if args.model == 'dsmil':
-        import dsmil as mil
-    elif args.model == 'abmil':
+
+    if args.model == 'abmil':
         import abmil as mil
-    
+
+    elif args.model == 'dsmil':
+        import dsmil as mil
     if args.datasets == 'musk1':
         data_all = get_data('datasets/mil_dataset/Musk/musk1norm.svm')
         args.num_feats = 166
@@ -139,7 +137,7 @@ def main():
     if args.datasets == 'tiger':
         data_all = get_data('datasets/mil_dataset/Tiger/data_100x100.svm')
         args.num_feats = 230  
-    
+
     bag_ins_list = []
     num_bag = data_all[-1][1]+1
     for i in range(num_bag):
@@ -148,22 +146,22 @@ def main():
         bag_vector = bag_data[:, 3]
         bag_ins_list.append([bag_label, bag_vector])
     bag_ins_list = shuffle(bag_ins_list)
-    
+
     ### check both classes exist in testing bags
     valid_bags = 1
-    while(valid_bags):
+    while (valid_bags):
         bag_ins_list = shuffle(bag_ins_list)
-        for k in range (0, args.cv_fold):
+        for k in range(args.cv_fold):
             bags_list, test_list = cross_validation_set(bag_ins_list, fold=args.cv_fold, index=k)
             bag_labels = 0
-            for i, data in enumerate(test_list):
+            for data in test_list:
                 bag_labels = np.clip(data[0], 0, 1) + bag_labels
             if bag_labels > 0:
                 valid_bags = 0         
-    
+
     acs = []
     print('Dataset: ' + args.datasets)
-    for k in range(0, args.cv_fold):
+    for k in range(args.cv_fold):
         print('Start %d-fold cross validation: fold %d ' % (args.cv_fold, k))
         bags_list, test_list = cross_validation_set(bag_ins_list, fold=args.cv_fold, index=k)
         i_classifier = mil.FCLayer(args.num_feats, 1)
@@ -174,7 +172,7 @@ def main():
         optimizer = torch.optim.Adam(milnet.parameters(), lr=args.lr, betas=(0.5, 0.9), weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epoch, 0)
         optimal_ac = 0
-        for epoch in range(0, args.num_epoch):
+        for epoch in range(args.num_epoch):
             train_loss = epoch_train(bags_list, optimizer, criterion, milnet, args) # iterate all bags
             test_loss, bag_labels, bag_predictions = epoch_test(test_list, criterion, milnet, args)
             accuracy, auc_value, precision, recall, fscore = five_scores(bag_labels, bag_predictions)

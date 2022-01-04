@@ -54,8 +54,7 @@ class SimCLR(object):
         zis = F.normalize(zis, dim=1)
         zjs = F.normalize(zjs, dim=1)
 
-        loss = self.nt_xent_criterion(zis, zjs)
-        return loss
+        return self.nt_xent_criterion(zis, zjs)
 
     def train(self):
 

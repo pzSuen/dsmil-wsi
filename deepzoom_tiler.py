@@ -59,7 +59,7 @@ class TileWorker(Process):
                 edge = np.mean(edge)/(self._tile_size**2)
                 w, h = tile.size
                 if edge > self._threshold:
-                    if not (w==self._tile_size and h==self._tile_size):
+                    if w != self._tile_size or h != self._tile_size:
                         tile = tile.resize((self._tile_size, self._tile_size))
                     tile.save(outfile, quality=self._quality)
             except:
@@ -97,7 +97,7 @@ class DeepZoomImageTiler(object):
         mag_list = [int(self._mag_base/2**i) for i in self._target_levels]
         mag_idx = 0
         for level in range(self._dz.level_count):
-            if not (level in target_levels):
+            if level not in target_levels:
                 continue
             tiledir = os.path.join("%s_files" % self._basename, str(mag_list[mag_idx]))
             if not os.path.exists(tiledir):
@@ -120,8 +120,8 @@ class DeepZoomImageTiler(object):
             print("Tiling %s: wrote %d/%d tiles" % (
                     self._associated or 'slide', count, total),
                     end='\r', file=sys.stderr)
-            if count == total:
-                print(file=sys.stderr)
+        if count == total:
+            print(file=sys.stderr)
 
 
 class DeepZoomStaticTiler(object):
@@ -172,10 +172,7 @@ class DeepZoomStaticTiler(object):
         tiler.run()
 
     def _url_for(self, associated):
-        if associated is None:
-            base = VIEWER_SLIDE_NAME
-        else:
-            base = self._slugify(associated)
+        base = VIEWER_SLIDE_NAME if associated is None else self._slugify(associated)
         return '%s.dzi' % base
 
     def _copydir(self, src, dest):
@@ -209,7 +206,6 @@ def nested_patches(img_slide, out_base, level=(0,), ext='jpeg'):
             patch_name = patch.split(os.sep)[-1]
             shutil.move(patch, os.path.join(bag_path, patch_name))
             sys.stdout.write('\r Patch [%d/%d]' % (i+1, len(patches)))
-        print('Done.')
     else:
         level_factor = 2**int(level[1]-level[0])
         levels = [int(os.path.basename(i)) for i in glob.glob(os.path.join('WSI_temp_files', '*'))]
@@ -237,7 +233,8 @@ def nested_patches(img_slide, out_base, level=(0,), ext='jpeg'):
             except:
                 pass
             sys.stdout.write('\r Patch [%d/%d]' % (i+1, len(low_patches)))
-        print('Done.')
+
+    print('Done.')
 
 if __name__ == '__main__':
     Image.MAX_IMAGE_PIXELS = None
