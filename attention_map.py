@@ -61,14 +61,14 @@ def test(args, bags_list, milnet):
     num_bags = len(bags_list)
     Tensor = torch.FloatTensor
     colors = [np.random.choice(range(256), size=3) for i in range(args.num_classes)]
-    for i in range(0, num_bags):
+    for i in range(num_bags):
         feats_list = []
         pos_list = []
         classes_list = []
         csv_file_path = glob.glob(os.path.join(bags_list[i], '*.'+args.patch_ext))
         dataloader, bag_size = bag_dataset(args, csv_file_path)
         with torch.no_grad():
-            for iteration, batch in enumerate(dataloader):
+            for batch in dataloader:
                 patches = batch['input'].float().cuda()
                 patch_pos = batch['position']
                 feats, classes = milnet.i_classifier(patches)
@@ -84,7 +84,7 @@ def test(args, bags_list, milnet):
             ins_classes = torch.from_numpy(classes_arr).cuda()
             bag_prediction, A, _ = milnet.b_classifier(bag_feats, ins_classes)
             bag_prediction = torch.sigmoid(bag_prediction).squeeze().cpu().numpy()
-            if len(bag_prediction.shape)==0 or len(bag_prediction.shape)==1:
+            if len(bag_prediction.shape) in [0, 1]:
                 bag_prediction = np.atleast_1d(bag_prediction)
             benign = True
             num_pos_classes = 0
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--export_scores', type=int, default=0)
     parser.add_argument('--score_path', type=str, default='test/score')
     args = parser.parse_args()
-    
+
     if args.embedder_weights == 'ImageNet':
         print('Use ImageNet features')
         resnet = models.resnet18(pretrained=True, norm_layer=nn.BatchNorm2d)
@@ -151,7 +151,7 @@ if __name__ == '__main__':
     if args.embedder_weights !=  'ImageNet':
         state_dict_weights = torch.load(args.embedder_weights)
         new_state_dict = OrderedDict()
-        for i in range(4):
+        for _ in range(4):
             state_dict_weights.popitem()
         state_dict_init = i_classifier.state_dict()
         for (k, v), (k_0, v_0) in zip(state_dict_weights.items(), state_dict_init.items()):
@@ -159,7 +159,7 @@ if __name__ == '__main__':
             new_state_dict[name] = v
         i_classifier.load_state_dict(new_state_dict, strict=False)
 
-    state_dict_weights = torch.load(args.aggregator_weights) 
+    state_dict_weights = torch.load(args.aggregator_weights)
     state_dict_weights["i_classifier.fc.weight"] = state_dict_weights["i_classifier.fc.0.weight"]
     state_dict_weights["i_classifier.fc.bias"] = state_dict_weights["i_classifier.fc.0.bias"]
     milnet.load_state_dict(state_dict_weights, strict=False)
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     os.makedirs(args.map_path, exist_ok=True)
     if args.export_scores:
         os.makedirs(args.score_path, exist_ok=True)
-    if args.class_name == None:
+    if args.class_name is None:
         args.class_name = ['class {}'.format(c) for c in range(args.num_classes)]
     if len(args.thres) != args.num_classes:
         raise ValueError('Number of thresholds does not match classes.')

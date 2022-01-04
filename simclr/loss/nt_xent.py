@@ -15,11 +15,10 @@ class NTXentLoss(torch.nn.Module):
         self.criterion = torch.nn.CrossEntropyLoss(reduction="sum")
 
     def _get_similarity_function(self, use_cosine_similarity):
-        if use_cosine_similarity:
-            self._cosine_similarity = torch.nn.CosineSimilarity(dim=-1)
-            return self._cosine_simililarity
-        else:
+        if not use_cosine_similarity:
             return self._dot_simililarity
+        self._cosine_similarity = torch.nn.CosineSimilarity(dim=-1)
+        return self._cosine_simililarity
 
     def _get_correlated_mask(self):
         diag = np.eye(2 * self.batch_size)
@@ -31,18 +30,13 @@ class NTXentLoss(torch.nn.Module):
 
     @staticmethod
     def _dot_simililarity(x, y):
-        v = torch.tensordot(x.unsqueeze(1), y.T.unsqueeze(0), dims=2)
         # x shape: (N, 1, C)
         # y shape: (1, C, 2N)
         # v shape: (N, 2N)
-        return v
+        return torch.tensordot(x.unsqueeze(1), y.T.unsqueeze(0), dims=2)
 
     def _cosine_simililarity(self, x, y):
-        # x shape: (N, 1, C)
-        # y shape: (1, 2N, C)
-        # v shape: (N, 2N)
-        v = self._cosine_similarity(x.unsqueeze(1), y.unsqueeze(0))
-        return v
+        return self._cosine_similarity(x.unsqueeze(1), y.unsqueeze(0))
 
     def forward(self, zis, zjs):
         representations = torch.cat([zjs, zis], dim=0)
